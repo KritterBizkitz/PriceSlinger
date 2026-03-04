@@ -1,64 +1,140 @@
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
-using System;
 using UnityEngine;
 
 namespace PriceSlinger
 {
-    [BepInPlugin("com.kritterbizkit.priceslinger", "PriceSlinger", "1.1.0")]
+    /// <summary>
+    /// BepInEx plugin entry point for PriceSlinger.
+    /// Handles configuration binding and Harmony patch application.
+    /// </summary>
+    [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
     public class Plugin : BaseUnityPlugin
     {
+        /// <summary>Unique identifier for this plugin.</summary>
+        public const string PluginGuid = "com.kritterbizkit.priceslinger";
+
+        /// <summary>Human-readable plugin name.</summary>
+        public const string PluginName = "PriceSlinger";
+
+        /// <summary>Semantic version of this plugin.</summary>
+        public const string PluginVersion = "1.1.1";
+
+        /// <summary>Shared logger instance for all PriceSlinger classes.</summary>
         internal static ManualLogSource Log;
-        private readonly Harmony harmony = new Harmony("com.kritterbizkit.priceslinger");
+
+        private Harmony _harmony;
 
         // ── Cards ────────────────────────────────────────────────────────────
+
+        /// <summary>Percentage markup over market price for normal shelf cards.</summary>
         internal static ConfigEntry<int> CardMarkupPercent;
+
+        /// <summary>Whether to round normal card prices to the nearest increment.</summary>
         internal static ConfigEntry<bool> CardRoundingEnabled;
+
+        /// <summary>Increment to round normal card prices to (e.g. 0.25).</summary>
         internal static ConfigEntry<float> CardRoundToNearest;
+
+        /// <summary>Prevent normal card prices from dropping below market value after rounding.</summary>
         internal static ConfigEntry<bool> CardPreventBelowMarket;
 
         // ── Graded Cards ─────────────────────────────────────────────────────
+
+        /// <summary>Percentage markup over market price for graded cards.</summary>
         internal static ConfigEntry<int> GradedCardMarkupPercent;
+
+        /// <summary>Whether to round graded card prices to the nearest increment.</summary>
         internal static ConfigEntry<bool> GradedCardRoundingEnabled;
+
+        /// <summary>Increment to round graded card prices to.</summary>
         internal static ConfigEntry<float> GradedCardRoundToNearest;
+
+        /// <summary>Prevent graded card prices from dropping below market value after rounding.</summary>
         internal static ConfigEntry<bool> GradedCardPreventBelowMarket;
 
-        // ── Items (packs, bulk boxes etc.) ───────────────────────────────────
+        // ── Items ────────────────────────────────────────────────────────────
+
+        /// <summary>Percentage markup over market price for standard items.</summary>
         internal static ConfigEntry<int> ItemMarkupPercent;
+
+        /// <summary>Percentage markup specifically for bulk box items.</summary>
         internal static ConfigEntry<int> BulkBoxMarkupPercent;
+
+        /// <summary>Whether to round item prices to the nearest increment.</summary>
         internal static ConfigEntry<bool> ItemRoundingEnabled;
+
+        /// <summary>Increment to round item prices to.</summary>
         internal static ConfigEntry<float> ItemRoundToNearest;
+
+        /// <summary>Prevent item prices from dropping below market value after rounding.</summary>
         internal static ConfigEntry<bool> ItemPreventBelowMarket;
+
+        /// <summary>If true, item markup is applied to average purchase cost instead of market price.</summary>
         internal static ConfigEntry<bool> ItemMarkupOnAvgCost;
+
+        /// <summary>Absolute minimum price for any item or card.</summary>
         internal static ConfigEntry<float> AbsoluteMinPrice;
 
         // ── Triggers ─────────────────────────────────────────────────────────
+
+        /// <summary>Hotkey to price all shelf cards, graded cards, and items at once.</summary>
         internal static ConfigEntry<KeyboardShortcut> PriceAllKey;
+
+        /// <summary>Hotkey to price only normal shelf cards.</summary>
         internal static ConfigEntry<KeyboardShortcut> PriceCardsKey;
+
+        /// <summary>Hotkey to price only graded shelf cards.</summary>
         internal static ConfigEntry<KeyboardShortcut> PriceGradedKey;
+
+        /// <summary>Hotkey to price only items.</summary>
         internal static ConfigEntry<KeyboardShortcut> PriceItemsKey;
+
+        /// <summary>Automatically price normal cards when placed on a shelf.</summary>
         internal static ConfigEntry<bool> PriceOnCardPlaced;
+
+        /// <summary>Automatically price graded cards when placed on a shelf.</summary>
         internal static ConfigEntry<bool> PriceGradedOnCardPlaced;
 
         // ── Misc ─────────────────────────────────────────────────────────────
+
+        /// <summary>Play a sound effect when a hotkey pricing run completes.</summary>
         internal static ConfigEntry<bool> PlaySoundOnPrice;
+
+        /// <summary>Enable verbose debug logging for troubleshooting.</summary>
         internal static ConfigEntry<bool> DebugLogging;
 
+        /// <summary>
+        /// Called by BepInEx when the plugin is loaded. Initializes config and patches.
+        /// </summary>
         private void Awake()
         {
             Log = base.Logger;
             InitConfig();
-            harmony.PatchAll();
-            Log.LogInfo("PriceSlinger loaded!");
+
+            _harmony = new Harmony(PluginGuid);
+            _harmony.PatchAll();
+
+            Log.LogInfo(PluginName + " v" + PluginVersion + " loaded!");
         }
 
+        /// <summary>
+        /// Called when the plugin MonoBehaviour is destroyed. Unpatches Harmony.
+        /// </summary>
         private void OnDestroy()
         {
-            harmony.UnpatchSelf();
+            if (_harmony != null)
+            {
+                _harmony.UnpatchSelf();
+            }
         }
 
+        /// <summary>
+        /// Binds all configuration entries with their sections, keys, defaults,
+        /// and descriptions.
+        /// </summary>
         private void InitConfig()
         {
             // ── Cards ────────────────────────────────────────────────────────
@@ -72,7 +148,8 @@ namespace PriceSlinger
 
             CardRoundToNearest = Config.Bind(
                 "Cards", "RoundToNearest", 0.25f,
-                "Round card prices to this increment (e.g. 0.25 = nearest quarter). Ignored if rounding is off.");
+                "Round card prices to this increment (e.g. 0.25 = nearest quarter). " +
+                "Ignored if rounding is off.");
 
             CardPreventBelowMarket = Config.Bind(
                 "Cards", "PreventPricingBelowMarket", true,
@@ -81,7 +158,8 @@ namespace PriceSlinger
             // ── Graded Cards ─────────────────────────────────────────────────
             GradedCardMarkupPercent = Config.Bind(
                 "GradedCards", "MarkupPercent", 15,
-                "Percentage markup over market price for graded cards. Separate from normal card markup.");
+                "Percentage markup over market price for graded cards. " +
+                "Separate from normal card markup.");
 
             GradedCardRoundingEnabled = Config.Bind(
                 "GradedCards", "RoundingEnabled", true,
@@ -98,7 +176,8 @@ namespace PriceSlinger
             // ── Items ────────────────────────────────────────────────────────
             ItemMarkupPercent = Config.Bind(
                 "Items", "MarkupPercent", 10,
-                "Percentage markup over market price for standard items (packs, accessories).");
+                "Percentage markup over market price for standard items " +
+                "(packs, accessories).");
 
             BulkBoxMarkupPercent = Config.Bind(
                 "Items", "BulkBoxMarkupPercent", 5,
@@ -106,7 +185,8 @@ namespace PriceSlinger
 
             ItemMarkupOnAvgCost = Config.Bind(
                 "Items", "MarkupOnAverageCost", false,
-                "If true, item markup is applied to average purchase cost instead of market price.");
+                "If true, item markup is applied to average purchase cost " +
+                "instead of market price.");
 
             ItemRoundingEnabled = Config.Bind(
                 "Items", "RoundingEnabled", true,
@@ -147,11 +227,13 @@ namespace PriceSlinger
 
             PriceOnCardPlaced = Config.Bind(
                 "Triggers", "PriceCardOnPlace", true,
-                "Automatically price a normal card compartment when a card is placed into it.");
+                "Automatically price a normal card compartment when a card " +
+                "is placed into it.");
 
             PriceGradedOnCardPlaced = Config.Bind(
                 "Triggers", "PriceGradedCardOnPlace", true,
-                "Automatically price a graded card compartment when a graded card is placed into it.");
+                "Automatically price a graded card compartment when a graded " +
+                "card is placed into it.");
 
             // ── Misc ─────────────────────────────────────────────────────────
             PlaySoundOnPrice = Config.Bind(
